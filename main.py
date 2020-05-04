@@ -11,6 +11,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import os
 import random
 import numpy as np
+import matplotlib.pyplot as plt
 
 '''
 This code is adapted from two sources:
@@ -124,6 +125,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
     trained for 1 epoch.
     '''
     model.train()   # Set the model to training mode
+    epoch_loss = 0
+    epoch_num = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()               # Clear the gradient
@@ -135,6 +138,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.sampler),
                 100. * batch_idx / len(train_loader), loss.item()))
+        epoch_loss += F.nll_loss(output, target, reduction='sum').item()
+        epoch_num += len(data)
+    return epoch_loss / epoch_num
 
 
 def test(model, device, test_loader):
@@ -156,6 +162,8 @@ def test(model, device, test_loader):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, test_num,
         100. * correct / test_num))
+
+    return test_loss
 
 
 def main():
@@ -236,44 +244,48 @@ def main():
     subset_indices_train = []
     subset_indices_valid = []
 
-    for i in range(10):
-        class_set = np.where(train_dataset.train_labels.numpy()==i)[0]
+    for j in [16, 8, 4, 2]:
+        print(j)
+        for i in range(10):
+            class_set = np.where(train_dataset.train_labels.numpy()==i)[0]
 
-        random.shuffle(class_set)
-        t = class_set[:(int(0.85 * len(class_set)))]
-        v = class_set[(int(0.85 * len(class_set))):]
-        subset_indices_train.extend(t)
-        subset_indices_valid.extend(t)
+            random.shuffle(class_set)
+            t = class_set[:(int(0.85 * len(class_set) / j))]
+            v = class_set[(int(0.85 * len(class_set) / j)):int(len(class_set) / j)]
+            subset_indices_train.extend(t)
+            subset_indices_valid.extend(t)
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size,
-        sampler=SubsetRandomSampler(subset_indices_train)
-    )
-    val_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.test_batch_size,
-        sampler=SubsetRandomSampler(subset_indices_valid)
-    )
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.batch_size,
+            sampler=SubsetRandomSampler(subset_indices_train)
+        )
+        val_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.test_batch_size,
+            sampler=SubsetRandomSampler(subset_indices_valid)
+        )
 
-    # Load your model [fcNet, ConvNet, Net]
-    model = Net().to(device)
+        # Load your model [fcNet, ConvNet, Net]
+        model = Net().to(device)
 
-    # Try different optimzers here [Adam, SGD, RMSprop]
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+        # Try different optimzers here [Adam, SGD, RMSprop]
+        optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-    # Set your learning rate scheduler
-    scheduler = StepLR(optimizer, step_size=args.step, gamma=args.gamma)
+        # Set your learning rate scheduler
+        scheduler = StepLR(optimizer, step_size=args.step, gamma=args.gamma)
 
-    # Training loop
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
-        test(model, device, val_loader)
-        scheduler.step()    # learning rate scheduler
+        # Training loop
+        losses = []
+        for epoch in range(1, args.epochs + 1):
+            t1 = train(args, model, device, train_loader, optimizer, epoch)
+            t2 = test(model, device, val_loader)
+            losses.append((t1, t2))
+            scheduler.step()    # learning rate scheduler
 
-        # You may optionally save your model at each epoch here
+            # You may optionally save your model at each epoch here
 
-    if args.save_model:
-        torch.save(model.state_dict(), "mnist_model.pt")
-
+        if args.save_model:
+            torch.save(model.state_dict(), "mnist_model_" + str(j) + ".pt")
+            np.save("losses" + str(j) + ".npy", np.array(losses))
 
 if __name__ == '__main__':
     main()
