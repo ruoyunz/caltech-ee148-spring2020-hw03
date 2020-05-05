@@ -1,3 +1,3 @@
 # caltech-ee148-spring2020-hw03
 
-The link to the instructions is available on Piazza.
+HW #3 Code: MNIST classifier and some visualizations and analysis
